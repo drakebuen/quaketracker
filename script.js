@@ -4,8 +4,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const legendElement = document.getElementById('legend');
 
     // --- Configuration ---
-    // USGS GeoJSON Feed URL (UPDATED: Past 7 Days, All Magnitudes)
-    const earthquakeDataURL = 'https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_week.geojson';
+    // USGS GeoJSON Feed URL (UPDATED: Current Month's Significant Earthquakes)
+    // const earthquakeDataURL = 'https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/significant_month.geojson'; // URL for significant earthquakes
+    const earthquakeDataURL = 'https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/4.5_week.geojson'; // URL for earthquakes with magnitude 4.5 and above in the last week
+    // Note: You can change the URL to other feeds as per your requirement from USGS Earthquake Hazards Program.
 
     const mapCenter = [20, 0]; // Initial map center [latitude, longitude]
     const mapZoom = 2;        // Initial map zoom level (good for world view)
@@ -87,8 +89,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 // Create a circle marker (radius based on magnitude, color on depth)
                 const circleMarker = L.circleMarker(latLng, {
                     radius: calculateRadius(magnitude), // Calculate radius based on magnitude
-                    fillColor: getColor(depth),         // Get fill color based on depth
-                    color: "#000",                      // Border color for the circle
+                    fillColor: getColor(magnitude),         // Get fill color based on depth
+                    // color: "#000",                      // Border color for the circle
+                    color: "#fff",                      // Border color for the circle (white)
                     weight: 0.5,                        // Border width
                     opacity: 1,                         // Border opacity
                     fillOpacity: 0.7                    // Fill opacity
@@ -136,35 +139,38 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     /**
-     * Determines marker fill color based on earthquake depth (in km).
-     * Uses a predefined color scale.
-     * @param {number} depth - The depth of the earthquake in km.
+     * Determines marker fill color based on earthquake magnitude.
+     * Uses a predefined color scale (stronger = darker colors).
+     * @param {number | null} magnitude - The magnitude of the earthquake.
      * @returns {string} - The hex color code for the marker fill.
      */
-    function getColor(depth) {
-        // Color scale based on depth (deeper = warmer colors)
-        return depth > 300 ? '#b30000' : // Dark Red (very deep)
-            depth > 150 ? '#e34a33' : // Red
-                depth > 70 ? '#fc8d59' : // Orange-Red
-                    depth > 30 ? '#fdbb84' : // Orange
-                        depth > 10 ? '#fee8c8' : // Light Orange/Yellow
-                            '#fff7ec';  // Very Light Yellow (shallow, < 10km)
+    function getColor(magnitude) {
+        // Handle null or undefined magnitude
+        if (magnitude === null || typeof magnitude === 'undefined') {
+            return '#cccccc'; // Default gray color for unknown magnitude
+        }
+        // Color scale based on magnitude (higher magnitude = darker colors)
+        return magnitude >= 8 ? '#800026' : // Dark Red (Major 8+)
+            magnitude >= 6 ? '#BD0026' : // Red (Strong 6-8)
+                magnitude >= 5 ? '#E31A1C' : // Orange-Red (Moderate 5-6)
+                    magnitude >= 4 ? '#FD8D3C' : // Orange (Light 4-5)
+                        magnitude >= 2 ? '#FEB24C' : // Yellow-Orange (Minor 2-4)
+                            '#FFEDA0';  // Light Yellow (Very Minor < 2)
     }
 
-
     /**
-     * Creates and adds a map legend explaining the depth-based color coding.
+     * Creates and adds a map legend explaining the magnitude-based color coding.
      */
     function createLegend() {
-        const grades = [-10, 10, 30, 70, 150, 300]; // Depth ranges (km) for legend breaks
-        const legendContent = ['<h4>Depth (km)</h4>']; // Legend title
+        const grades = [0, 2, 4, 5, 6, 8]; // Magnitude ranges for legend breaks
+        const legendContent = ['<h4>Magnitude</h4>']; // Legend title
 
-        // Loop through depth intervals and generate a label with a colored square for each interval
+        // Loop through magnitude intervals and generate a label with a colored square for each interval
         for (let i = 0; i < grades.length; i++) {
             const from = grades[i];
             const to = grades[i + 1];
-            // Get color corresponding to the start of the range (add 1 to handle the -10 start)
-            const color = getColor(from + 1);
+            // Get color corresponding to the magnitude
+            const color = getColor(from);
 
             // Add legend item HTML (colored square + range text)
             legendContent.push(
@@ -177,3 +183,5 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
 }); // End DOMContentLoaded listener
+
+

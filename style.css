@@ -80,3 +80,13 @@ p {
     margin-bottom: 5px;
     font-size: 1.1em;
 }
+
+.magnitude-filter {
+    margin: 10px 0;
+    font-family: Arial, sans-serif;
+}
+
+#magnitude-select {
+    padding: 5px;
+    font-size: 14px;
+}
