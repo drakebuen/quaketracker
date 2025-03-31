@@ -1,0 +1,82 @@
+/* Basic styling */
+body {
+    font-family: sans-serif;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    /* Center heading and paragraph */
+}
+
+h1,
+p {
+    text-align: center;
+    padding: 0 1em;
+}
+
+/* Map container */
+#map {
+    height: 75vh;
+    /* Adjust height as needed */
+    width: 95%;
+    /* Adjust width as needed */
+    max-width: 1200px;
+    /* Optional max width */
+    border: 1px solid #ccc;
+    margin-top: 10px;
+    margin-bottom: 10px;
+}
+
+/* Loading indicator */
+#loading {
+    margin: 20px;
+    font-style: italic;
+    color: #555;
+}
+
+/* Legend Styling */
+#legend {
+    padding: 10px 15px;
+    font-size: 12px;
+    background: rgba(255, 255, 255, 0.8);
+    /* Semi-transparent white */
+    box-shadow: 0 0 15px rgba(0, 0, 0, 0.2);
+    border-radius: 5px;
+    line-height: 18px;
+    color: #555;
+    margin-bottom: 20px;
+}
+
+#legend h4 {
+    margin-top: 0;
+    margin-bottom: 5px;
+    text-align: center;
+}
+
+#legend i {
+    width: 18px;
+    height: 18px;
+    float: left;
+    margin-right: 8px;
+    opacity: 0.7;
+    border-radius: 50%;
+    /* Make legend colors circles */
+}
+
+/* Leaflet popup customization (Optional) */
+.leaflet-popup-content-wrapper {
+    border-radius: 5px;
+}
+
+.leaflet-popup-content {
+    font-size: 13px;
+    line-height: 1.4;
+}
+
+.leaflet-popup-content b {
+    display: block;
+    /* Make magnitude stand out */
+    margin-bottom: 5px;
+    font-size: 1.1em;
+}
