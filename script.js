@@ -4,184 +4,175 @@ document.addEventListener('DOMContentLoaded', () => {
     const legendElement = document.getElementById('legend');
 
     // --- Configuration ---
-    // USGS GeoJSON Feed URL (Past Day, M1.0+)
-    // You can change this URL to get different data sets (e.g., past hour, past 7 days, different magnitudes)
-    // See: https://earthquake.usgs.gov/earthquakes/feed/v1.0/geojson.php
-    const earthquakeDataURL = 'https://earthquake.usgs.gov/feed/v1.0/summary/1.0_day.geojson';
+    // USGS GeoJSON Feed URL (UPDATED: Past 7 Days, All Magnitudes)
+    const earthquakeDataURL = 'https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_week.geojson';
 
     const mapCenter = [20, 0]; // Initial map center [latitude, longitude]
-    const mapZoom = 2;        // Initial map zoom level
+    const mapZoom = 2;        // Initial map zoom level (good for world view)
 
     // --- Initialize Leaflet Map ---
     const map = L.map(mapElement).setView(mapCenter, mapZoom);
 
-    // Add Tile Layer (using OpenStreetMap)
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-        maxZoom: 18,
+    // Add Tile Layer (using CARTO Voyager for primarily English labels)
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+        subdomains: 'abcd', // CARTO uses subdomains a, b, c, d
+        maxZoom: 20 // CARTO tiles often support higher zoom levels
     }).addTo(map);
 
     // --- Fetch and Process Earthquake Data ---
-    const fetchWithRetry = (url, retries = 3, delay = 1000) => {
-        return new Promise((resolve, reject) => {
-            const fetchData = () => {
-                const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), 5000);
-
-                fetch(url, {
-                    signal: controller.signal,
-                    mode: 'cors',
-                    headers: {
-                        'Accept': 'application/json'
-                    }
-                })
-                    .then(response => {
-                        clearTimeout(timeoutId);
-                        if (!response.ok) {
-                            throw new Error(`HTTP error! Status: ${response.status}`);
-                        }
-                        return response.json();
-                    })
-                    .then(data => resolve(data))
-                    .catch(error => {
-                        clearTimeout(timeoutId);
-                        if (retries > 0) {
-                            console.log(`Retrying... (${retries} attempts left)`);
-                            setTimeout(() => fetchData(), delay);
-                            retries--;
-                        } else {
-                            reject(error);
-                        }
-                    });
-            };
-            fetchData();
-        });
-    };
-
-    fetchWithRetry(earthquakeDataURL)
+    fetch(earthquakeDataURL)
+        .then(response => {
+            // Check if the response status is OK (e.g., 200)
+            if (!response.ok) {
+                throw new Error(`HTTP error! Status: ${response.status}`);
+            }
+            return response.json(); // Parse the response body as JSON
+        })
         .then(data => {
-            loadingElement.style.display = 'none';
-            console.log("Earthquake data fetched:", data);
+            loadingElement.style.display = 'none'; // Hide loading indicator
+            console.log("Earthquake data fetched:", data); // Log data for debugging
 
-            if (data && data.features) {
-                addEarthquakeMarkers(data.features);
-                createLegend();
+            // Check if the fetched data looks like valid GeoJSON with features
+            if (data && data.features && Array.isArray(data.features)) {
+                addEarthquakeMarkers(data.features); // Process the earthquake features
+                createLegend(); // Create the legend based on depth colors
             } else {
-                mapElement.innerHTML = 'No earthquake data available. Try again later.';
+                // Handle cases where data is fetched but might be empty or malformed
+                mapElement.innerHTML = 'Data received from USGS, but it appears to contain no earthquake features or is in an unexpected format.';
+                console.warn("Received data object lacks 'features' array or is not as expected:", data);
             }
         })
         .catch(error => {
-            loadingElement.style.display = 'none';
-            console.error("Error:", error);
-            mapElement.innerHTML = `
-                <div class="error-message">
-                    <h3>Failed to load earthquake data</h3>
-                    <p>${error.message}</p>
-                    <p>Possible causes:</p>
-                    <ul>
-                        <li>Network connection issues</li>
-                        <li>USGS API service temporarily unavailable</li>
-                        <li>Your browser's security settings</li>
-                    </ul>
-                    <button onclick="window.location.reload()">Try Again</button>
-                </div>
-            `;
+            // Handle network errors, CORS issues (when running locally), or parsing errors
+            loadingElement.style.display = 'none'; // Hide loading indicator
+            console.error("Error fetching or processing earthquake data:", error);
+
+            // Provide a helpful user message in the map container
+            let userErrorMessage = `Error loading earthquake data: ${error.message}.`;
+
+            // Specifically check for potential CORS issues when running from local file system
+            if (window.location.protocol === 'file:') {
+                userErrorMessage += '<br><br><b>Note:</b> Loading external data directly from a local file (file:///) can be blocked by browser security (CORS policy).';
+                userErrorMessage += '<br><b>Solution:</b> Try running this page using a simple local web server (see console or project instructions).';
+            } else if (error instanceof TypeError && error.message.includes('fetch')) {
+                // Catch generic fetch errors (network, potentially CORS even not on file://)
+                userErrorMessage += '<br><br>This might be a network issue, a temporary problem with the USGS server, or a browser security block (CORS). Please check your internet connection and try again. If the problem persists, check the browser console (F12) for more details.';
+            } else {
+                // General error fallback
+                userErrorMessage += '<br><br>Please check your internet connection and ensure the USGS server is accessible. Try refreshing the page.';
+            }
+            // Display the error message within a styled div inside the map container
+            mapElement.innerHTML = `<div style="padding: 20px; color: red; border: 1px solid red; background-color: #fee; margin: 10px;">${userErrorMessage}</div>`;
         });
 
     // --- Helper Functions ---
 
     /**
-     * Adds earthquake markers to the map.
+     * Adds earthquake circle markers to the map based on the GeoJSON features.
      * @param {Array} features - Array of earthquake features from GeoJSON.
      */
     function addEarthquakeMarkers(features) {
         features.forEach(feature => {
+            // Ensure the feature has geometry and coordinates
             if (feature.geometry && feature.geometry.coordinates) {
-                const coords = feature.geometry.coordinates;
-                const props = feature.properties;
+                const coords = feature.geometry.coordinates; // [longitude, latitude, depth]
+                const props = feature.properties;           // Contains mag, place, time, url etc.
                 const magnitude = props.mag;
-                const depth = coords[2];
+                const depth = coords[2]; // Depth is the third element
 
-                // GeoJSON coordinates are [longitude, latitude, depth]
-                // Leaflet needs [latitude, longitude]
+                // Leaflet requires coordinates in [latitude, longitude] order
                 const latLng = [coords[1], coords[0]];
 
-                // Create a circle marker
+                // Create a circle marker (radius based on magnitude, color on depth)
                 const circleMarker = L.circleMarker(latLng, {
-                    radius: calculateRadius(magnitude), // Size based on magnitude
-                    fillColor: getColor(depth),      // Color based on depth
-                    color: "#000",                     // Border color
-                    weight: 0.5,                       // Border width
-                    opacity: 1,
-                    fillOpacity: 0.7
-                }).addTo(map);
+                    radius: calculateRadius(magnitude), // Calculate radius based on magnitude
+                    fillColor: getColor(depth),         // Get fill color based on depth
+                    color: "#000",                      // Border color for the circle
+                    weight: 0.5,                        // Border width
+                    opacity: 1,                         // Border opacity
+                    fillOpacity: 0.7                    // Fill opacity
+                }).addTo(map); // Add the circle marker to the map
 
-                // Create popup content
-                const popupContent = `
-                    <b>Magnitude: ${magnitude.toFixed(1)}</b><br>
-                    Location: ${props.place || 'N/A'}<br>
+                // Create informative content for the tooltip (shown on hover)
+                const tooltipContent = `
+                    <b>Magnitude: ${magnitude !== null ? magnitude.toFixed(1) : 'N/A'}</b><br>
+                    Location: ${props.place || 'Information unavailable'}<br>
                     Time: ${new Date(props.time).toLocaleString()}<br>
-                    Depth: ${depth.toFixed(1)} km
+                    Depth: ${depth !== null ? depth.toFixed(1) + ' km' : 'N/A'}
                     ${props.url ? `<br><a href="${props.url}" target="_blank" rel="noopener noreferrer">More Info (USGS)</a>` : ''}
                 `;
 
-                // Bind popup to marker (appears on click)
-                // circleMarker.bindPopup(popupContent);
-
-                // Bind tooltip to marker (appears on hover)
-                circleMarker.bindTooltip(popupContent, {
-                    sticky: true // Tooltip follows the mouse
+                // Bind the tooltip to the marker, making it appear on hover
+                circleMarker.bindTooltip(tooltipContent, {
+                    sticky: true // Tooltip follows the mouse cursor
                 });
+            } else {
+                // Log a warning if a feature is missing geometry (should be rare for USGS feed)
+                console.warn('Skipping feature without valid geometry/coordinates:', feature);
             }
         });
+        console.log(`Added ${features.length} earthquake markers to the map.`);
     }
 
     /**
      * Calculates marker radius based on earthquake magnitude.
-     * @param {number} magnitude - The magnitude of the earthquake.
-     * @returns {number} - The radius for the circle marker.
+     * Uses a non-linear scale for better visual distinction and handles null/negative mags.
+     * @param {number | null} magnitude - The magnitude of the earthquake.
+     * @returns {number} - The radius in pixels for the circle marker.
      */
     function calculateRadius(magnitude) {
-        if (magnitude < 0) return 2; // Min radius for negative magnitudes (can happen)
-        // Exponential growth looks better than linear for magnitude representation
-        return Math.max(magnitude * magnitude * 0.5, 3); // Ensure a minimum radius
+        // Handle null or undefined magnitude
+        if (magnitude === null || typeof magnitude === 'undefined') {
+            return 3; // Return a small default radius
+        }
+        // Handle negative magnitudes (can occur for very small events)
+        if (magnitude < 0) {
+            return 2; // Smallest radius for negative mags
+        }
+        // Simple non-linear scaling (mag^2) with a minimum radius of 3
+        // Adjust the multiplier (0.5) or minimum (3) as needed for visual preference
+        return Math.max(magnitude * magnitude * 0.5, 3);
     }
 
     /**
-     * Determines marker color based on earthquake depth.
-     * Deeper earthquakes get darker/different colors.
+     * Determines marker fill color based on earthquake depth (in km).
+     * Uses a predefined color scale.
      * @param {number} depth - The depth of the earthquake in km.
-     * @returns {string} - The hex color code.
+     * @returns {string} - The hex color code for the marker fill.
      */
     function getColor(depth) {
-        // Color scale based on depth
+        // Color scale based on depth (deeper = warmer colors)
         return depth > 300 ? '#b30000' : // Dark Red (very deep)
             depth > 150 ? '#e34a33' : // Red
                 depth > 70 ? '#fc8d59' : // Orange-Red
                     depth > 30 ? '#fdbb84' : // Orange
                         depth > 10 ? '#fee8c8' : // Light Orange/Yellow
-                            '#fff7ec';  // Very Light Yellow (shallow)
+                            '#fff7ec';  // Very Light Yellow (shallow, < 10km)
     }
 
 
     /**
-     * Creates and adds a legend to the map.
+     * Creates and adds a map legend explaining the depth-based color coding.
      */
     function createLegend() {
-        const grades = [-10, 10, 30, 70, 150, 300]; // Depth ranges
-        const legendContent = ['<h4>Depth (km)</h4>']; // Start with title
+        const grades = [-10, 10, 30, 70, 150, 300]; // Depth ranges (km) for legend breaks
+        const legendContent = ['<h4>Depth (km)</h4>']; // Legend title
 
-        // loop through our depth intervals and generate a label with a colored square for each interval
+        // Loop through depth intervals and generate a label with a colored square for each interval
         for (let i = 0; i < grades.length; i++) {
             const from = grades[i];
             const to = grades[i + 1];
-            const color = getColor(from + 1); // Get color for the start of the range
+            // Get color corresponding to the start of the range (add 1 to handle the -10 start)
+            const color = getColor(from + 1);
 
+            // Add legend item HTML (colored square + range text)
             legendContent.push(
-                `<i style="background:${color}"></i> ${from}${to ? '–' + to : '+'}`
+                `<i style="background:${color}"></i> ${from}${to ? '&ndash;' + to : '+'}`
             );
         }
 
+        // Set the innerHTML of the legend container div
         legendElement.innerHTML = legendContent.join('<br>');
     }
 
