@@ -17,33 +17,75 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Add Tile Layer (using OpenStreetMap)
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+        attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
         maxZoom: 18,
     }).addTo(map);
 
     // --- Fetch and Process Earthquake Data ---
-    fetch(earthquakeDataURL)
-        .then(response => {
-            if (!response.ok) {
-                throw new Error(`HTTP error! Status: ${response.status}`);
-            }
-            return response.json();
-        })
+    const fetchWithRetry = (url, retries = 3, delay = 1000) => {
+        return new Promise((resolve, reject) => {
+            const fetchData = () => {
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 5000);
+
+                fetch(url, {
+                    signal: controller.signal,
+                    mode: 'cors',
+                    headers: {
+                        'Accept': 'application/json'
+                    }
+                })
+                    .then(response => {
+                        clearTimeout(timeoutId);
+                        if (!response.ok) {
+                            throw new Error(`HTTP error! Status: ${response.status}`);
+                        }
+                        return response.json();
+                    })
+                    .then(data => resolve(data))
+                    .catch(error => {
+                        clearTimeout(timeoutId);
+                        if (retries > 0) {
+                            console.log(`Retrying... (${retries} attempts left)`);
+                            setTimeout(() => fetchData(), delay);
+                            retries--;
+                        } else {
+                            reject(error);
+                        }
+                    });
+            };
+            fetchData();
+        });
+    };
+
+    fetchWithRetry(earthquakeDataURL)
         .then(data => {
-            loadingElement.style.display = 'none'; // Hide loading indicator
-            console.log("Earthquake data fetched:", data); // Log data for debugging
+            loadingElement.style.display = 'none';
+            console.log("Earthquake data fetched:", data);
 
             if (data && data.features) {
                 addEarthquakeMarkers(data.features);
-                createLegend(); // Create legend after data is loaded
+                createLegend();
             } else {
-                mapElement.innerHTML = 'Failed to load earthquake data features.';
+                mapElement.innerHTML = 'No earthquake data available. Try again later.';
             }
         })
         .catch(error => {
-            loadingElement.style.display = 'none'; // Hide loading indicator
-            console.error("Error fetching or processing earthquake data:", error);
-            mapElement.innerHTML = `Error loading earthquake data: ${error.message}. Please try refreshing the page.`;
+            loadingElement.style.display = 'none';
+            console.error("Error:", error);
+            mapElement.innerHTML = `
+                <div class="error-message">
+                    <h3>Failed to load earthquake data</h3>
+                    <p>${error.message}</p>
+                    <p>Possible causes:</p>
+                    <ul>
+                        <li>Network connection issues</li>
+                        <li>USGS API service temporarily unavailable</li>
+                        <li>Your browser's security settings</li>
+                    </ul>
+                    <button onclick="window.location.reload()">Try Again</button>
+                </div>
+            `;
         });
 
     // --- Helper Functions ---
@@ -136,7 +178,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const color = getColor(from + 1); // Get color for the start of the range
 
             legendContent.push(
-                `<i style="background:${color}"></i> ${from}${to ? '&ndash;' + to : '+'}`
+                `<i style="background:${color}"></i> ${from}${to ? '–' + to : '+'}`
             );
         }
 
